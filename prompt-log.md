@@ -673,3 +673,37 @@ This is a natural commit point. Remaining deliverables are fleshing out **EVALUA
 
 yep, do it exactly in that order.
 Remember to be concise, EVALUATION.md is max half a page.
+
+# RESPONSE - 2026-06-26 10:46:42 +02:00 - session e9c8635d
+
+Done, in order:
+
+1. **Committed & pushed** the split + experiment — `e19dddb`.
+2. **[EVALUATION.md](EVALUATION.md)** — rewritten whole, ~half a page: metrics + the bar, how consistency is checked without speaking the languages, the wrong→changed story (structured outputs, atomization, model split), the N-run reliability table, and what's next.
+3. **[README.md](README.md)** — what it is, requirements, API-key setup (both `.env` and env var), how to run (`go run .`, `-runs N`, `-atomize`), and the model split.
+
+All four deliverables now exist: public repo, `prompt-log.md`, `EVALUATION.md`, `README.md`.
+
+The two docs are **written but not yet committed** — I stopped at the end of your ordered list so you can review them first. Want me to commit and push them? And one small thing worth doing before you submit: a clean-machine sanity check (`go vet ./...` + a quick `go run . -runs 1`) to confirm a grader gets a working run from a fresh clone.
+
+# PROMPT - 2026-06-26 10:54:33 +02:00 - session e9c8635d
+
+I think nativeness should also be judged by Sonnet. Let's make the "judged by another model" decision consistent.
+make all sonnet calls low effort. Sonnet can handle these tasks in low effort.
+Only the generation should be Haiku.
+
+Make this change, and update the markdown files accordingly.
+
+# RESPONSE - 2026-06-26 10:59:26 +02:00 - session e9c8635d
+
+Done. The principle is now consistent: **Haiku generates; Sonnet judges everything (verify + nativeness) at low effort; atomize on Sonnet low effort too.** Verified: build + vet clean, N=3 runs in ~2 min.
+
+- **Code:** [evaluate.go](evaluate.go) nativeness → Sonnet + low effort; [atomize.go](atomize.go) → low effort; [client.go](client.go) model comments updated. Generation stays Haiku.
+- **[EVALUATION.md](EVALUATION.md):** model-split bullet + reliability table/prose updated to the new numbers, with a note that exact figures vary per run (fresh sampling).
+- **[README.md](README.md):** Models section updated.
+
+Everything from this change **plus** the two docs from the previous step are uncommitted. Want me to commit and push the lot? I'd suggest a message like *"Judge nativeness with Sonnet too; run all Sonnet calls at low effort; add EVALUATION and README"* — then do the clean-machine sanity check (`go vet` + `go run . -runs 1` from a fresh state) before you submit.
+
+# PROMPT - 2026-06-26 11:00:38 +02:00 - session e9c8635d
+
+ok, let's do that.

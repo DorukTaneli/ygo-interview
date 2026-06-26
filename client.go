@@ -7,18 +7,17 @@ import (
 	"github.com/anthropics/anthropic-sdk-go"
 )
 
-// Models. Haiku drafts the descriptions and rates the softer nativeness check —
-// fast, and good enough there. Sonnet is the factual verifier (the star metric):
-// a stronger model, and deliberately a different one from the generator, so the
-// judge never grades its own output. Atomization (frozen, run rarely) also uses
-// Sonnet for quality.
+// Models. Haiku drafts the descriptions; Sonnet does all the judging — both the
+// factual verifier and the nativeness rating — and the atomization. Using a
+// stronger, deliberately different model for every judgement keeps the judge from
+// grading its own output.
 const (
 	fastModel   = anthropic.ModelClaudeHaiku4_5_20251001
 	strongModel = anthropic.ModelClaudeSonnet4_6
 )
 
-// effortLow runs a structured-output call at low effort, to keep the Sonnet judge
-// fast. The zero value ("") leaves effort at the API default.
+// effortLow runs the Sonnet structured-output calls at low effort: it handles
+// these judging and atomizing tasks well without extra effort, keeping runs fast.
 const effortLow = anthropic.BetaOutputConfigEffortLow
 
 // Client wraps the Anthropic SDK. Calls are made fresh every time — the

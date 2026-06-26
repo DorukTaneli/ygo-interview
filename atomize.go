@@ -33,7 +33,7 @@ Rules:
 func atomizeFacts(ctx context.Context, c Client, h Hotel) ([]Fact, error) {
 	var out atomizerOutput
 	user := "Source fact lines:\n" + factLines(h.Facts())
-	if err := c.CompleteSchema(ctx, strongModel, atomizeSystem, user, 0.0, 2048, "", &out); err != nil {
+	if err := c.CompleteSchema(ctx, strongModel, atomizeSystem, user, 0.0, 2048, effortLow, &out); err != nil {
 		return nil, fmt.Errorf("atomize: %w", err)
 	}
 

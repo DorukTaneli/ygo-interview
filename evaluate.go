@@ -57,7 +57,7 @@ Give the integer score and a one-sentence reason. Do not use quotation marks in 
 func nativeness(ctx context.Context, c Client, text, language string) (NativenessResult, error) {
 	system := fmt.Sprintf(nativeSystemTmpl, language, language)
 	var nr NativenessResult
-	if err := c.CompleteSchema(ctx, fastModel, system, text, 0.0, 512, "", &nr); err != nil {
+	if err := c.CompleteSchema(ctx, strongModel, system, text, 0.0, 512, effortLow, &nr); err != nil {
 		return NativenessResult{}, fmt.Errorf("nativeness: %w", err)
 	}
 	return nr, nil
