@@ -434,3 +434,109 @@ Natural next step, and the next-most-important for grading ("getting to good"): 
 # PROMPT - 2026-06-26 09:50:20 +02:00 - session 9be831f8
 
 commit and push.
+
+# RESPONSE - 2026-06-26 09:50:55 +02:00 - session 9be831f8
+
+Pushed. Commit `2e7e6a5` is up on `main` — 8 files changed (added `atomize.go`, `consistency.go`), `.env`/`cache/` untracked as expected (the CRLF warnings are just line-ending normalization).
+
+https://github.com/DorukTaneli/ygo-interview/commit/2e7e6a5
+
+Checkpoint locked in. The verifier and the star metric are now trustworthy. When you're ready, the next-highest-value step is **reliability evidence + a regenerate-on-failure loop** (define the bar → run N times → show structured reliably clears it while naive doesn't), which is the "getting to good" part of the grading.
+
+# PROMPT - 2026-06-26 09:52:05 +02:00 - session 9be831f8
+
+One of the requirements in the task description is "Make the output reliably good and show how you got there." 
+Write about this atomizer in EVALUATION.md
+EVALUATION.md should be about half a page and there are several things I want to write, so be concise.
+
+# RESPONSE - 2026-06-26 09:53:44 +02:00 - session 9be831f8
+
+Created [EVALUATION.md](EVALUATION.md) with the atomizer section under a **"Making the output reliably good"** heading — which maps directly to that task requirement and the deliverable's "what was wrong / what you changed / how scores improved" ask.
+
+It's ~120 words and self-contained, so you can slot your other sections around it (metrics-and-why, how consistency is checked without speaking the languages, what you'd do with more time). The before/after numbers are baked in as the evidence. Want me to draft any of the other sections, or leave the rest to you?
+
+# PROMPT - 2026-06-26 09:54:55 +02:00 - session 9be831f8
+
+Too long. Keep only the core idea and the example.
+
+# RESPONSE - 2026-06-26 09:55:25 +02:00 - session 9be831f8
+
+Trimmed to the core idea + the spa example — three sentences.
+
+# PROMPT - 2026-06-26 10:01:01 +02:00 - session 9be831f8
+
+```
+Natural next step, and the next-most-important for grading ("getting to good"): define the bar, run N times to show the distribution, and add a regenerate-on-failure loop so structured reliably clears it while naive doesn't
+```
+
+
+Nice, we can now focus on running it multiple times to see drift. What do you mean by "define the bar"?
+Also, I think regenerate on failure is unnecessary for this short challenge. I think It would also be interesting to see failures in the evaluations. What do you think?
+
+# RESPONSE - 2026-06-26 10:01:55 +02:00 - session 9be831f8
+
+Two good questions, and your instinct on the second is right.
+
+**"Define the bar"** just means an explicit pass/fail threshold — the task says *"Decide what score counts as good for each."* Without one, "reliably good" has nothing to measure against. Concretely I'd propose:
+
+- **Consistency (the star, strict):** a set *passes* iff every language carries exactly the base atomic set (100% agreement) **and** 0 ungrounded inventions. For trustworthy travel data a single dropped or invented fact is a real defect, so "mostly consistent" shouldn't pass.
+- **Nativeness (softer, looser):** each language ≥ 4/5.
+
+Then **"reliably good" = the fraction of N runs that clear that bar.** That's the number the reliability story is about.
+
+**On skipping regenerate-on-failure — I agree, and surfacing failures is the better move.** Here's the real reason it's not just acceptable but stronger: a harness that always prints 100% is indistinguishable from a verifier that rubber-stamps everything. Showing that across N runs the structured pipeline *occasionally* drifts and the metric *catches it* — naming the exact fact that dropped — is what proves the metric actually discriminates, and it gives an honest reliability number instead of one cherry-picked run. A reviewer trusts a checker that reports failures far more than one that never does. Regenerate-on-failure is a production guarantee mechanism; it's out of scope here and would actually *hide* the evidence you want to show.
+
+**One technical thing to make this work:** the disk cache keys on (model, system, prompt, temp), so re-running the identical generation prompt returns the *same cached text* — every run would look identical. I need to add a **per-run index to the generation cache key** so each of the N runs is a fresh sample (generation is already temp 0.7, so the API samples differently each call; only our cache was deduping). The verifier and atomizer stay deterministic/cached — their keys already vary by the text being checked.
+
+So the experiment I'd build: run N times, print a distribution — e.g. *structured passed 9/10 (mean 98%), naive 0/10 (mean ~60%)* — and for the runs that fail, show which facts drifted. Want me to build that?
+
+# PROMPT - 2026-06-26 10:03:40 +02:00 - session 9be831f8
+
+What about just getting rid of the cache? The cost is not that high.
+
+# RESPONSE - 2026-06-26 10:04:39 +02:00 - session 9be831f8
+
+Agreed — for this challenge, dropping the cache is the cleaner call. The cost is genuinely low (a full run is ~18 calls; even N=20 is a few hundred short Sonnet calls, on the order of a couple dollars), and for a distribution you *want* fresh samples anyway, so caching generation actively works against you. Simpler code, more honest output.
+
+**One thing to preserve, though:** compute the atomized reference **once per program run and reuse it across all N runs** — don't re-atomize each iteration. The atomic fact set and its IDs are the yardstick everything is scored against; if they wobble between runs, cross-run and cross-language comparisons stop lining up. This isn't a cache concern — it falls out naturally from atomizing once up front and passing `facts` into the run loop. (The verifier and nativeness judges, by contrast, *should* run fresh on every generation — that's the point.)
+
+So concretely I'd:
+1. Rip out the disk cache (`readCache`/`writeCache`/`cacheKey`/`cacheDir`) and drop the `/cache/` line from `.gitignore` — it all becomes dead code.
+2. Atomize once, then loop N times: each run does naive + structured generation → verify → nativeness, scored against the bar.
+3. Print the distribution (pass rate + mean consistency per mode) and, for failing runs, the specific facts that drifted.
+
+Heads-up: those calls run sequentially, so a larger N takes a few minutes of wall-clock — fine for a one-shot experiment, and we can parallelize later if it drags.
+
+Want me to go ahead — remove the cache and build the N-run experiment?
+
+# PROMPT - 2026-06-26 10:05:47 +02:00 - session 9be831f8
+
+Can we store atomizations and push it to github maybe? That way when it's rerun on another machine atomizations are consistent.
+
+# RESPONSE - 2026-06-26 10:06:47 +02:00 - session 9be831f8
+
+Yes — and it's the right instinct. It turns the atomization from "re-derived by an LLM each run" into a **frozen, committed reference artifact**. Three wins:
+
+- **Reproducible across machines:** graders get the *exact* atomic fact set we developed against, not a fresh LLM interpretation that might split things slightly differently.
+- **No API call needed to atomize on their end** — one less failure point when they run it with their own key.
+- **Reviewable:** they can open the file and see/audit the canonical facts directly.
+
+This is the "freeze the atomized set" refinement I mentioned earlier, done properly. It pairs naturally with removing the cache: we drop the *general* response cache (generation/verify/nativeness all run fresh), but we *persist the one thing that must be stable* — the reference.
+
+**Design:**
+1. Commit `atomic_facts.json` — `{ "hotel-001": [ {"id":"amenity-0","text":"heated outdoor pool"}, ... ], "hotel-002": [...] }`. Loaded via `go:embed` so it works regardless of working directory.
+2. The normal run **loads** the frozen facts — it never calls the atomizer.
+3. Regeneration is a deliberate step: `go run . -atomize` runs the LLM atomizer over the source and rewrites the file. You run it once (or when `source.json` changes), commit the result, done. (Documented in the README.)
+
+So the LLM atomizer code stays, but it's a prep tool, not part of the scored pipeline.
+
+Folding this in with the cache removal, the plan is:
+1. Remove the disk cache + the `/cache/` gitignore line.
+2. Add `atomic_facts.json` + the `-atomize` regen flag; main run loads frozen facts.
+3. Build the N-run experiment on top.
+
+Want me to do 1 and 2 now (generate and commit `atomic_facts.json`), then move to the experiment?
+
+# PROMPT - 2026-06-26 10:07:36 +02:00 - session 9be831f8
+
+Sounds good, implement.

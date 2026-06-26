@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"os"
 )
@@ -18,6 +19,9 @@ type langOutput struct {
 type genFunc func(ctx context.Context, c Client, h Hotel, facts []Fact, language string) (string, error)
 
 func main() {
+	atomize := flag.Bool("atomize", false, "regenerate atomic_facts.json from source via the LLM, then exit")
+	flag.Parse()
+
 	loadDotEnv(".env")
 	if os.Getenv("ANTHROPIC_API_KEY") == "" {
 		fmt.Fprintln(os.Stderr, "ANTHROPIC_API_KEY not set (put it in .env or the environment)")
@@ -33,13 +37,28 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Prep step: regenerate the frozen reference and exit. Run deliberately, then
+	// commit atomic_facts.json. The scored pipeline below never calls the atomizer.
+	if *atomize {
+		if err := regenerateAtomicFacts(ctx, c, hotels, "atomic_facts.json"); err != nil {
+			fmt.Fprintln(os.Stderr, "regenerating atomic facts:", err)
+			os.Exit(1)
+		}
+		fmt.Println("wrote atomic_facts.json")
+		return
+	}
+
+	factsByHotel, err := loadAtomicFacts()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "loading atomic facts:", err)
+		os.Exit(1)
+	}
+
 	h := hotels[0]
 	languages := []string{"English", "German", "French"}
-
-	// The canonical reference: source facts split into atomic claims (cached).
-	facts, err := atomizeFacts(ctx, c, h)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "atomizing facts:", err)
+	facts := factsByHotel[h.ID]
+	if len(facts) == 0 {
+		fmt.Fprintf(os.Stderr, "no atomic facts for %s — run `go run . -atomize` first\n", h.ID)
 		os.Exit(1)
 	}
 

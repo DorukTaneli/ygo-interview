@@ -36,7 +36,7 @@ Example: if the source says "dogs allowed in ground-floor rooms only" and the te
 func verify(ctx context.Context, c Client, facts []Fact, text string) (VerifyResult, error) {
 	user := fmt.Sprintf("Source facts:\n%s\nDescription:\n%s", factLines(facts), text)
 	var vr VerifyResult
-	if err := c.CompleteSchema(ctx, verifySystem, user, 0.0, 1024, "verify", &vr); err != nil {
+	if err := c.CompleteSchema(ctx, verifySystem, user, 0.0, 1024, &vr); err != nil {
 		return VerifyResult{}, fmt.Errorf("verify: %w", err)
 	}
 	return vr, nil
@@ -57,7 +57,7 @@ Give the integer score and a one-sentence reason.`
 func nativeness(ctx context.Context, c Client, text, language string) (NativenessResult, error) {
 	system := fmt.Sprintf(nativeSystemTmpl, language, language)
 	var nr NativenessResult
-	if err := c.CompleteSchema(ctx, system, text, 0.0, 512, "nativeness", &nr); err != nil {
+	if err := c.CompleteSchema(ctx, system, text, 0.0, 512, &nr); err != nil {
 		return NativenessResult{}, fmt.Errorf("nativeness: %w", err)
 	}
 	return nr, nil

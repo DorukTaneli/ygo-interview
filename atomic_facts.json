@@ -1,0 +1,126 @@
+{
+  "hotel-001": [
+    {
+      "id": "amenity-0",
+      "text": "heated outdoor pool"
+    },
+    {
+      "id": "amenity-1",
+      "text": "spa"
+    },
+    {
+      "id": "amenity-2",
+      "text": "sauna"
+    },
+    {
+      "id": "amenity-3",
+      "text": "spa is adults only"
+    },
+    {
+      "id": "amenity-4",
+      "text": "two restaurants"
+    },
+    {
+      "id": "amenity-5",
+      "text": "free bike rental"
+    },
+    {
+      "id": "amenity-6",
+      "text": "EV charging"
+    },
+    {
+      "id": "room-0",
+      "text": "double rooms"
+    },
+    {
+      "id": "room-1",
+      "text": "sea-view suites"
+    },
+    {
+      "id": "room-2",
+      "text": "family apartments for up to 4"
+    },
+    {
+      "id": "nearby-0",
+      "text": "3 minute walk to the beach"
+    },
+    {
+      "id": "nearby-1",
+      "text": "15 minutes to Westerland centre"
+    },
+    {
+      "id": "nearby-2",
+      "text": "guided tidal-flat hikes"
+    },
+    {
+      "id": "policy-0",
+      "text": "breakfast included"
+    },
+    {
+      "id": "policy-1",
+      "text": "dogs allowed in ground-floor rooms only"
+    },
+    {
+      "id": "policy-2",
+      "text": "free cancellation up to 14 days before arrival"
+    }
+  ],
+  "hotel-002": [
+    {
+      "id": "amenity-0",
+      "text": "ski-in ski-out access"
+    },
+    {
+      "id": "amenity-1",
+      "text": "indoor pool"
+    },
+    {
+      "id": "amenity-2",
+      "text": "sauna"
+    },
+    {
+      "id": "amenity-3",
+      "text": "boot room with heated racks"
+    },
+    {
+      "id": "amenity-4",
+      "text": "on-site bistro"
+    },
+    {
+      "id": "room-0",
+      "text": "standard twins"
+    },
+    {
+      "id": "room-1",
+      "text": "chalet-style family rooms for up to 5"
+    },
+    {
+      "id": "room-2",
+      "text": "one accessible ground-floor room"
+    },
+    {
+      "id": "nearby-0",
+      "text": "100 m to the nearest ski lift"
+    },
+    {
+      "id": "nearby-1",
+      "text": "10 minutes to Chamonix centre by free shuttle"
+    },
+    {
+      "id": "policy-0",
+      "text": "half board available for a surcharge"
+    },
+    {
+      "id": "policy-1",
+      "text": "pets welcome"
+    },
+    {
+      "id": "policy-2",
+      "text": "ski storage included"
+    },
+    {
+      "id": "policy-3",
+      "text": "free cancellation up to 30 days before arrival"
+    }
+  ]
+}

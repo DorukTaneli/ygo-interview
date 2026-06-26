@@ -1,9 +1,6 @@
 # Secrets — never commit
 .env
 
-# Local LLM response cache
-/cache/
-
 # Go build artifacts
 /bin/
 *.exe

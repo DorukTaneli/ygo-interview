@@ -26,8 +26,8 @@ type Hotel struct {
 // Fact is one atomic, source-grounded claim with a stable ID. The ID is what
 // lets us compare languages back against the source without reading them.
 type Fact struct {
-	ID   string
-	Text string
+	ID   string `json:"id"`
+	Text string `json:"text"`
 }
 
 // Facts flattens the source arrays into atomic facts with stable IDs. The
