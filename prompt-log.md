@@ -540,3 +540,136 @@ Want me to do 1 and 2 now (generate and commit `atomic_facts.json`), then move t
 # PROMPT - 2026-06-26 10:07:36 +02:00 - session 9be831f8
 
 Sounds good, implement.
+
+# RESPONSE - 2026-06-26 10:12:35 +02:00 - session 9be831f8
+
+Pushed — commit `959e7fa` is on `main`.
+
+https://github.com/DorukTaneli/ygo-interview/commit/959e7fa
+
+The frozen-reference + cache-removal milestone is done and verified end-to-end. State of things:
+- `atomic_facts.json` is the committed canonical reference; graders get the identical fact set with no atomizer call on their end.
+- `go run . -atomize` regenerates it deliberately (documented behavior for when `source.json` changes).
+- Cache gone → every run is fresh samples, ready for the distribution.
+
+**One cosmetic bug I now have a diagnosis for:** the English nativeness *reason* keeps truncating mid-sentence (`"...idiomatic phrases like "`). It's not `max_tokens` — it's **structured-output constrained decoding**: the model starts to quote an example (`like "fuel up"`), but inside a JSON string the grammar makes the next `"` close the string, so the reason ends early. The score (5/5) is unaffected. One-line fix: tell the judge *"do not use quotation marks in the reason."* Trivial — I can fold it into the next change.
+
+Next up is the main event: the **N-run reliability experiment** — atomize once, loop N times drawing fresh samples, score each against the bar (consistency 100% + 0 inventions; nativeness ≥ 4), and print the distribution (pass rate + mean per mode) with the specific facts that drifted on failing runs. That's the core "getting to good" evidence.
+
+Want me to build the experiment now (and slip in the one-line nativeness-reason fix while I'm at it)?
+
+# PROMPT - 2026-06-26 10:17:16 +02:00 - session 9be831f8
+
+yes, build it.
+
+# RESPONSE - stopped
+
+On it. Building the N-run experiment plus the one-line nativeness-reason fix. Four edits.
+
+1. Nativeness-reason fix (avoid the constrained-decoding quote truncation):
+
+Edited
+evaluate.go
++1
+-1
+2. Carry per-language inventions in the report (so failure detail can name them):
+
+Edited
+consistency.go
++5
+-1
+3. Restructure main.go into the N-run experiment. Imports first:
+
+Edited
+main.go
++8
+-0
+Now the runs flag and the experiment loop:
+
+Edited
+main.go
++23
+-12
+Now replace printSummary with the distribution + bar logic:
+
+Edited
+main.go
++121
+-8
+Build and validate with a quick 2-run pass first:
+
+Used PowerShell
+The experiment works, and the output is exactly the evidence we wanted. Three things to flag:
+
+The nativeness-reason fix worked — reasons now read fully ("...idiomatic phrases like just steps from, at your own pace, and within easy reach"), no truncation.
+The distribution tells an honest story. Naive fails every run (0/2), drifting on different facts each time; structured is far better (mean 98%) but not perfect — run 1 it scored 97% with 1 invention because German conflated "EV charging" with a free car shuttle (kostenlosen E-Auto-Ladeservice) and dropped amenity-6. That's a real, subtle failure of the good pipeline, caught by the harness. That nuance is gold for the writeup.
+But I spotted a residual verifier issue in the failure detail: naive run 2's English invented entry is a rambling run-on that merges a real contradiction with hedging/meta-commentary ("...(not a contradiction, but...) — actually omission..."). The judge occasionally still crams multiple thoughts + hedging into one entry. The agreement metric is unaffected, but it makes the invention detail noisy.
+Since we're about to generate the showcase numbers, let me tighten the verifier to force terse, atomic, one-claim-per-entry output first:
+
+Edited
+evaluate.go
++1
+-1
+Now the full default run (N=5) to produce the real distribution:
+
+
+Used a tool
+
+
+# PROMPT - 2026-06-26 10:28:46 +02:00 - session e9c8635d
+
+The runs are taking too long. Let's just use haiku instead, with thinking off if possible.
+
+# RESPONSE - 2026-06-26 10:34:38 +02:00 - session e9c8635d
+
+Haiku is dramatically faster — **N=5 in 171s** (~3 min) vs. all-Sonnet timing out. And thinking is confirmed off (default for Haiku). But the caveat I flagged came true, and concretely:
+
+**The Haiku judge is producing false positives on the star metric.** Look at the structured "failures":
+- `English invented [dogs welcome in ground-floor rooms]` — but that's literally `policy-1` (*"dogs allowed in ground-floor rooms only"*). The description is **correct and grounded**; the Haiku verifier wrongly tagged it as an invention instead of crediting `policy-1` as present.
+- That error then cascades: because the base (English) lost `policy-1`, French and German that *correctly* state it show up as `add[policy-1]` vs. base.
+
+So the structured runs that "failed" (3/5) mostly didn't drift — **the judge fumbled.** The descriptions are fine; Haiku just can't reliably verify. (Likely worsened by the dogs/ground-floor example in the verify prompt — a weaker model over-triggers on it.) That means the all-Haiku star metric isn't trustworthy, which is exactly the thing being graded.
+
+**Recommendation: split the models.** The realization is that not all calls are equal:
+- **Verify** (the factual judge = the star metric) → **Sonnet**. This is where quality is non-negotiable.
+- **Generation** and **nativeness** (softer) → **Haiku**. Fast, and good enough.
+- **Atomize** → Sonnet, but it's frozen so zero runtime cost.
+
+Verify is ~1/3 of calls, so this keeps most of the speed (~30–60s more for N=5, still well under 4 min) while restoring a trustworthy metric. It's also a *defensible design choice* for the writeup: "judge with a strong model, draft with a fast one."
+
+Want me to implement the split? (The alternative — stay all-Haiku — means reporting a metric we've just watched misfire, which I'd advise against.)
+
+# PROMPT - 2026-06-26 10:36:37 +02:00 - session e9c8635d
+
+Ok, let's split. For sonnet judge, set effort to low. 
+This is also better as LLMs tend to like their own inputs, sonnet can judge haiku better.
+
+Try with n=3, not 5
+
+# RESPONSE - 2026-06-26 10:41:44 +02:00 - session e9c8635d
+
+The split is working — and it fixed exactly what was broken. **N=3 in 124s** (~2 min), Sonnet judge at low effort stays fast.
+
+**The all-Haiku false positives are gone.** Structured inventions dropped from 0.8 → **0.0 mean**; the bogus "English invented dogs-in-ground-floor-rooms" (`policy-1`) verdict that plagued the Haiku judge is absent. Cross-model judging with the stronger model did its job.
+
+**The distribution now tells an honest, nuanced story:**
+
+| | naive | structured |
+|---|---|---|
+| consistency pass rate | 0/3 | **2/3** |
+| mean consistency | 70% | **98%** |
+| mean inventions | 1.3 | **0.0** |
+| mean nativeness | 4.8 | 4.4 |
+
+- **Naive fails every run** (0/3), drifting on different facts each time, and its inventions are now *real*: it claims the hotel is "beachfront / directly on the beach," which the Sonnet judge correctly flags as contradicting the `3-minute walk to the beach` fact. That's a nuanced, defensible catch — not the noise Haiku was producing.
+- **Structured clears the bar 2/3.** The one miss (run 2, 94%) is *genuine* drift, not a judge error: English dropped `sauna` while German/French kept it. Honest evidence that a single pass occasionally slips — which is the whole point of measuring.
+- **A real tradeoff surfaced:** structured reads slightly less natively (4.4 vs 4.8) because it packs all 16 facts into 2–4 sentences, while naive flows better by cherry-picking. Both still clear the ≥4 nativeness bar. Good material for the writeup.
+
+So the pipeline now reliably reaches the consistency bar far more often than the baseline, the metric is trustworthy (strong cross-model judge), and the failures are visible and real.
+
+This is a natural commit point. Remaining deliverables are fleshing out **EVALUATION.md** (metrics + why, the cross-language check, naive→structured improvement, this reliability evidence) and writing **README.md** (setup, API key, how to run). Want me to commit the split + experiment first, then draft those?
+
+# PROMPT - 2026-06-26 10:44:31 +02:00 - session e9c8635d
+
+yep, do it exactly in that order.
+Remember to be concise, EVALUATION.md is max half a page.

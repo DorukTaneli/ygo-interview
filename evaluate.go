@@ -27,7 +27,7 @@ Strict rules for unsupported_claims:
 - NEVER list a fact the text merely left out: an omission belongs in missing_ids, not here.
 - NEVER write commentary, hedges, or notes (e.g. "this is minor", "no unsupported claims found"). If there are none, return an empty array.
 - Ignore generic marketing language ("a wonderful stay", "relax in comfort"); it asserts no checkable fact.
-- Each entry is a short English summary of the offending claim.
+- Each entry is ONE claim in a few words of English — no explanations, no parenthetical reasoning, no hedging words ("actually", "not a contradiction", "but"). One claim per array element. If you are unsure whether something is a real contradiction, leave it out.
 
 Example: if the source says "dogs allowed in ground-floor rooms only" and the text says "dogs welcome throughout", that is a contradiction and belongs in unsupported_claims. If the text simply does not mention dogs, that is an omission (a missing_id), not an unsupported claim.`
 
@@ -36,7 +36,7 @@ Example: if the source says "dogs allowed in ground-floor rooms only" and the te
 func verify(ctx context.Context, c Client, facts []Fact, text string) (VerifyResult, error) {
 	user := fmt.Sprintf("Source facts:\n%s\nDescription:\n%s", factLines(facts), text)
 	var vr VerifyResult
-	if err := c.CompleteSchema(ctx, verifySystem, user, 0.0, 1024, &vr); err != nil {
+	if err := c.CompleteSchema(ctx, strongModel, verifySystem, user, 0.0, 1024, effortLow, &vr); err != nil {
 		return VerifyResult{}, fmt.Errorf("verify: %w", err)
 	}
 	return vr, nil
@@ -51,13 +51,13 @@ type NativenessResult struct {
 const nativeSystemTmpl = `You are a native-speaker language quality rater for %s.
 Rate how natural the given hotel description reads on a scale of 1 to 5, judging fluency and idiom only, not factual content:
 5 = reads as if a native %s copywriter wrote it; 1 = obviously a stiff or literal machine translation.
-Give the integer score and a one-sentence reason.`
+Give the integer score and a one-sentence reason. Do not use quotation marks in the reason.`
 
 // nativeness rates how idiomatic a description reads in its language.
 func nativeness(ctx context.Context, c Client, text, language string) (NativenessResult, error) {
 	system := fmt.Sprintf(nativeSystemTmpl, language, language)
 	var nr NativenessResult
-	if err := c.CompleteSchema(ctx, system, text, 0.0, 512, &nr); err != nil {
+	if err := c.CompleteSchema(ctx, fastModel, system, text, 0.0, 512, "", &nr); err != nil {
 		return NativenessResult{}, fmt.Errorf("nativeness: %w", err)
 	}
 	return nr, nil

@@ -5,6 +5,8 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"sort"
+	"strings"
 )
 
 // langOutput bundles everything produced for one language.
@@ -15,11 +17,18 @@ type langOutput struct {
 	Native   NativenessResult
 }
 
+// runResult is one strategy's output and scores for a single run.
+type runResult struct {
+	outputs []langOutput
+	report  ConsistencyReport
+}
+
 // genFunc is a generation strategy: naiveGenerate or generateDescription.
 type genFunc func(ctx context.Context, c Client, h Hotel, facts []Fact, language string) (string, error)
 
 func main() {
 	atomize := flag.Bool("atomize", false, "regenerate atomic_facts.json from source via the LLM, then exit")
+	runs := flag.Int("runs", 5, "number of fresh generation+eval runs per strategy")
 	flag.Parse()
 
 	loadDotEnv(".env")
@@ -67,21 +76,31 @@ func main() {
 		fmt.Printf("  [%s] %s\n", f.ID, f.Text)
 	}
 
-	// Two strategies, same eval harness, so the scores are directly comparable.
-	naiveOut, naiveRep, err := runMode(ctx, c, h, facts, languages, naiveGenerate)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "naive mode:", err)
-		os.Exit(1)
-	}
-	structOut, structRep, err := runMode(ctx, c, h, facts, languages, generateDescription)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "structured mode:", err)
-		os.Exit(1)
+	// Each strategy runs -runs times with fresh samples. Run 1 is shown in full
+	// for eyeballing; all runs feed the reliability distribution.
+	strategies := []struct {
+		name string
+		gen  genFunc
+	}{
+		{"naive", naiveGenerate},
+		{"structured", generateDescription},
 	}
 
-	printMode("NAIVE BASELINE — whole JSON, each language written independently", naiveOut, naiveRep, len(facts))
-	printMode("STRUCTURED — facts pinned, same set for every language", structOut, structRep, len(facts))
-	printSummary(naiveOut, naiveRep, structOut, structRep)
+	byMode := map[string][]runResult{}
+	for i := 0; i < *runs; i++ {
+		for _, s := range strategies {
+			out, rep, err := runMode(ctx, c, h, facts, languages, s.gen)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "%s run %d: %v\n", s.name, i+1, err)
+				os.Exit(1)
+			}
+			byMode[s.name] = append(byMode[s.name], runResult{out, rep})
+		}
+	}
+
+	printMode("NAIVE BASELINE — whole JSON, each language written independently (run 1)", byMode["naive"][0].outputs, byMode["naive"][0].report, len(facts))
+	printMode("STRUCTURED — facts pinned, same set for every language (run 1)", byMode["structured"][0].outputs, byMode["structured"][0].report, len(facts))
+	printDistribution(*runs, byMode)
 }
 
 // runMode generates, verifies and rates every language with the given strategy,
@@ -141,15 +160,128 @@ func printMode(header string, outputs []langOutput, rep ConsistencyReport, total
 	fmt.Printf("Ungrounded claims (inventions) across all languages: %d\n", rep.Inventions)
 }
 
-func printSummary(naiveOut []langOutput, naiveRep ConsistencyReport, structOut []langOutput, structRep ConsistencyReport) {
-	fmt.Printf("\n########## SUMMARY: naive vs structured ##########\n")
-	row := func(metric, naive, structured string) {
-		fmt.Printf("%-28s %-10s %-10s\n", metric, naive, structured)
+// The bar. Consistency is the star and strict: a set passes only if every
+// language carries exactly the base fact set with no ungrounded inventions.
+// Nativeness is the softer check: every language must read at >= 4/5.
+func passesConsistency(r ConsistencyReport) bool { return r.Agreement >= 0.999 && r.Inventions == 0 }
+
+func minNativeness(outputs []langOutput) int {
+	m := 5
+	for _, o := range outputs {
+		if o.Native.Score < m {
+			m = o.Native.Score
+		}
 	}
-	row("metric", "naive", "structured")
-	row("cross-language consistency", pct(naiveRep.Agreement), pct(structRep.Agreement))
-	row("ungrounded inventions", fmt.Sprint(naiveRep.Inventions), fmt.Sprint(structRep.Inventions))
-	row("avg nativeness (1-5)", fmt.Sprintf("%.1f", avgNative(naiveOut)), fmt.Sprintf("%.1f", avgNative(structOut)))
+	return m
+}
+
+// printDistribution reports how reliably each strategy clears the bar across all
+// runs — the "getting to good" evidence — and names the facts that drifted on
+// failing runs.
+func printDistribution(runs int, byMode map[string][]runResult) {
+	fmt.Printf("\n########## RELIABILITY OVER %d RUNS ##########\n", runs)
+	fmt.Println("Bar: consistency = 100% agreement AND 0 inventions (the star, strict);")
+	fmt.Println("     nativeness = every language >= 4/5 (softer).")
+
+	fmt.Printf("\nper-run  (agreement%% / inventions)\n")
+	fmt.Printf("  %-5s %-16s %-16s\n", "run", "naive", "structured")
+	for i := 0; i < runs; i++ {
+		n, s := byMode["naive"][i].report, byMode["structured"][i].report
+		fmt.Printf("  %-5d %-16s %-16s\n", i+1,
+			fmt.Sprintf("%.0f%% / %d", n.Agreement*100, n.Inventions),
+			fmt.Sprintf("%.0f%% / %d", s.Agreement*100, s.Inventions))
+	}
+
+	fmt.Printf("\n%-26s %-12s %-12s\n", "metric", "naive", "structured")
+	row := func(label string, f func(string) string) {
+		fmt.Printf("%-26s %-12s %-12s\n", label, f("naive"), f("structured"))
+	}
+	row("consistency pass rate", func(m string) string { return passRate(byMode[m], func(r runResult) bool { return passesConsistency(r.report) }) })
+	row("mean consistency", func(m string) string {
+		var s float64
+		for _, r := range byMode[m] {
+			s += r.report.Agreement
+		}
+		return pct(s / float64(runs))
+	})
+	row("mean inventions", func(m string) string {
+		var s int
+		for _, r := range byMode[m] {
+			s += r.report.Inventions
+		}
+		return fmt.Sprintf("%.1f", float64(s)/float64(runs))
+	})
+	row("nativeness pass rate", func(m string) string { return passRate(byMode[m], func(r runResult) bool { return minNativeness(r.outputs) >= 4 }) })
+	row("mean nativeness", func(m string) string {
+		var s float64
+		for _, r := range byMode[m] {
+			s += avgNative(r.outputs)
+		}
+		return fmt.Sprintf("%.1f", s/float64(runs))
+	})
+	row("overall pass rate", func(m string) string {
+		return passRate(byMode[m], func(r runResult) bool { return passesConsistency(r.report) && minNativeness(r.outputs) >= 4 })
+	})
+
+	fmt.Printf("\nconsistency-bar failures (facts that drifted):\n")
+	any := false
+	for _, m := range []string{"naive", "structured"} {
+		for i, r := range byMode[m] {
+			if passesConsistency(r.report) {
+				continue
+			}
+			any = true
+			fmt.Printf("  %-11s run %d: %s\n", m, i+1, failureSummary(r.report))
+		}
+	}
+	if !any {
+		fmt.Println("  (none)")
+	}
+}
+
+func passRate(rs []runResult, ok func(runResult) bool) string {
+	p := 0
+	for _, r := range rs {
+		if ok(r) {
+			p++
+		}
+	}
+	return fmt.Sprintf("%d/%d", p, len(rs))
+}
+
+// failureSummary names, per language, the facts dropped/added vs. the base and
+// any ungrounded inventions — so a failing run is human-readable at a glance.
+func failureSummary(r ConsistencyReport) string {
+	var parts []string
+	for _, lang := range sortedKeys(r.PerLang) {
+		d := r.PerLang[lang]
+		var seg []string
+		if len(d.Dropped) > 0 {
+			seg = append(seg, "drop"+fmt.Sprint(d.Dropped))
+		}
+		if len(d.Added) > 0 {
+			seg = append(seg, "add"+fmt.Sprint(d.Added))
+		}
+		if len(seg) > 0 {
+			parts = append(parts, lang+" "+strings.Join(seg, " "))
+		}
+	}
+	for _, lang := range sortedKeys(r.Invented) {
+		parts = append(parts, fmt.Sprintf("%s invented %v", lang, r.Invented[lang]))
+	}
+	if len(parts) == 0 {
+		return "(agreement below bar; see run-1 detail)"
+	}
+	return strings.Join(parts, " | ")
+}
+
+func sortedKeys[V any](m map[string]V) []string {
+	ks := make([]string, 0, len(m))
+	for k := range m {
+		ks = append(ks, k)
+	}
+	sort.Strings(ks)
+	return ks
 }
 
 func pct(f float64) string { return fmt.Sprintf("%.0f%%", f*100) }

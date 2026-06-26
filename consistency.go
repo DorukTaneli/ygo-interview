@@ -18,6 +18,7 @@ type ConsistencyReport struct {
 	Agreement  float64             // mean fact-set agreement of non-base languages vs. base
 	Inventions int                 // total ungrounded claims across all languages
 	PerLang    map[string]LangDiff // keyed by non-base language
+	Invented   map[string][]string // language -> ungrounded claims (all languages, base included)
 }
 
 // crossLanguageConsistency derives the metric from the per-language verify
@@ -25,11 +26,14 @@ type ConsistencyReport struct {
 // already produced, treating the base language's set as ground truth.
 func crossLanguageConsistency(base string, results map[string]VerifyResult) ConsistencyReport {
 	baseSet := toSet(results[base].PresentIDs)
-	rep := ConsistencyReport{Base: base, PerLang: map[string]LangDiff{}}
+	rep := ConsistencyReport{Base: base, PerLang: map[string]LangDiff{}, Invented: map[string][]string{}}
 
 	var agreements []float64
 	for lang, vr := range results {
 		rep.Inventions += len(vr.UnsupportedClaims)
+		if len(vr.UnsupportedClaims) > 0 {
+			rep.Invented[lang] = vr.UnsupportedClaims
+		}
 		if lang == base {
 			continue
 		}

@@ -39,7 +39,7 @@ Write the description in %s.
 
 Feature exactly these facts:
 %s`, hotelContext(h), language, factLines(facts))
-	return c.Complete(ctx, genSystem, user, 0.7, 1024)
+	return c.Complete(ctx, fastModel, genSystem, user, 0.7, 1024)
 }
 
 const naiveSystem = `You are a travel copywriter. Write a short, appealing marketing description of the hotel described by the given data.
@@ -53,5 +53,5 @@ Output only the description itself, with no preamble, title, or quotation marks.
 // The facts argument is ignored; it exists only to share genFunc's signature.
 func naiveGenerate(ctx context.Context, c Client, h Hotel, _ []Fact, language string) (string, error) {
 	user := fmt.Sprintf("Hotel data:\n%s\n\nWrite the description in %s.", h.JSON(), language)
-	return c.Complete(ctx, naiveSystem, user, 0.7, 1024)
+	return c.Complete(ctx, fastModel, naiveSystem, user, 0.7, 1024)
 }
