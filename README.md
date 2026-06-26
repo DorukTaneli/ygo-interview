@@ -32,8 +32,7 @@ export ANTHROPIC_API_KEY=sk-ant-...        # PowerShell: $env:ANTHROPIC_API_KEY=
 ## Run
 
 ```sh
-go run .            # naive vs. structured, 5 runs each, with the reliability distribution
-go run . -runs 3    # choose the number of runs per strategy
+go run . -runs 3    # choose the number of runs per strategy, used 3 during testing, defaults to 5
 ```
 
 This prints the atomic fact set, the full descriptions + scores for the first
