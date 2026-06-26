@@ -1,0 +1,29 @@
+{
+  "permissions": {
+    "deny": ["Read(./prompt-log.md)"]
+  },
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell -NoProfile -File .claude/prompt-logger.ps1 prompt",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell -NoProfile -File .claude/prompt-logger.ps1 response",
+            "timeout": 15
+          }
+        ]
+      }
+    ]
+  }
+}
