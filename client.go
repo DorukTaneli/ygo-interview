@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -61,6 +62,47 @@ func (c Client) Complete(ctx context.Context, system, user string, temperature f
 	out := sb.String()
 	c.writeCache(key, out)
 	return out, nil
+}
+
+// CompleteSchema constrains the model's reply to the JSON schema reflected from
+// dest (a pointer to a struct) using structured outputs, then unmarshals the
+// reply into dest. Because the output is schema-constrained, the model cannot
+// wrap it in prose or append chain-of-thought — the failure mode that breaks
+// parsing JSON out of free text. Structured outputs is GA on Sonnet 4.6; this
+// SDK exposes it on the Beta endpoint. Responses are cached on disk like Complete.
+func (c Client) CompleteSchema(ctx context.Context, system, user string, temperature float64, maxTokens int64, schemaName string, dest any) error {
+	key := cacheKey(string(modelID), "schema:"+schemaName, system, user, fmt.Sprintf("%.2f", temperature))
+	if cached, ok := c.readCache(key); ok {
+		return json.Unmarshal([]byte(cached), dest)
+	}
+
+	res, err := c.api.Beta.Messages.New(ctx, anthropic.BetaMessageNewParams{
+		Model:       modelID,
+		MaxTokens:   maxTokens,
+		Temperature: anthropic.Float(temperature),
+		System:      []anthropic.BetaTextBlockParam{{Text: system}},
+		Messages: []anthropic.BetaMessageParam{
+			anthropic.NewBetaUserMessage(anthropic.NewBetaTextBlock(user)),
+		},
+		OutputConfig: anthropic.BetaOutputConfigParam{
+			Format: anthropic.BetaJSONOutputFormatParam{Schema: dest},
+		},
+	})
+	if err != nil {
+		return err
+	}
+
+	// Passing a struct pointer as Schema makes the SDK both generate the schema
+	// and unmarshal the response into dest; we only need the raw JSON to cache.
+	var raw string
+	for _, block := range res.Content {
+		if block.Type == "text" {
+			raw = block.Text
+			break
+		}
+	}
+	c.writeCache(key, raw)
+	return nil
 }
 
 func cacheKey(parts ...string) string {

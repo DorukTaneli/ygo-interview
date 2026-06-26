@@ -46,6 +46,14 @@ func (h Hotel) Facts() []Fact {
 	return facts
 }
 
+// JSON renders the hotel as indented JSON — the raw blob handed to the naive
+// baseline generator. Marshalling a struct of strings cannot fail, so the
+// error is intentionally dropped to keep call sites clean.
+func (h Hotel) JSON() string {
+	b, _ := json.MarshalIndent(h, "", "  ")
+	return string(b)
+}
+
 // LoadHotels parses the embedded source data.
 func LoadHotels() ([]Hotel, error) {
 	var hotels []Hotel

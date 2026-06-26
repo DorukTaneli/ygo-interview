@@ -41,3 +41,17 @@ Feature exactly these facts:
 %s`, hotelContext(h), language, factLines(facts))
 	return c.Complete(ctx, genSystem, user, 0.7, 1024)
 }
+
+const naiveSystem = `You are a travel copywriter. Write a short, appealing marketing description of the hotel described by the given data.
+Write 2-4 sentences in the target language, naturally and idiomatically.
+Output only the description itself, with no preamble, title, or quotation marks.`
+
+// naiveGenerate is the baseline strategy: hand the model the whole hotel record
+// and ask for a description, with no control over which facts it features. Each
+// language is written independently from the source, so the languages tend to
+// pick different facts — the cross-language drift this project exists to catch.
+// The facts argument is ignored; it exists only to share genFunc's signature.
+func naiveGenerate(ctx context.Context, c Client, h Hotel, _ []Fact, language string) (string, error) {
+	user := fmt.Sprintf("Hotel data:\n%s\n\nWrite the description in %s.", h.JSON(), language)
+	return c.Complete(ctx, naiveSystem, user, 0.7, 1024)
+}

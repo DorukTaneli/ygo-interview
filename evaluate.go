@@ -2,14 +2,13 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"strings"
 )
 
 // VerifyResult is the structured judgement of one description against the
 // source fact set: which facts it carries, which it dropped, and any claims it
-// makes that the source does not support.
+// makes that the source does not support. The json tags become the structured-
+// output schema, so the model fills exactly these fields.
 type VerifyResult struct {
 	PresentIDs        []string `json:"present_ids"`
 	MissingIDs        []string `json:"missing_ids"`
@@ -17,26 +16,28 @@ type VerifyResult struct {
 }
 
 const verifySystem = `You are a meticulous fact-checker for hotel descriptions.
-You are given a list of source facts (each with an ID) and a marketing description written in some language.
-Map the description back onto the facts and respond with ONLY a JSON object (no markdown fences) of the form:
-{"present_ids": ["amenity-0", ...], "missing_ids": ["policy-2", ...], "unsupported_claims": ["short English summary of a claim not supported by the source", ...]}
+You are given a numbered list of source facts (each with an ID) and a marketing description written in some language. Read the description in whatever language it is written and map it back onto the source facts. Fill exactly three fields:
 
-Rules:
-- A fact is "present" if the description clearly states it; a faithful paraphrase counts.
-- "missing_ids" are facts from the list the description does not state.
-- "unsupported_claims" are concrete claims in the description (amenities, numbers, distances, policies) that NONE of the source facts support. Ignore generic marketing language ("a wonderful stay", "relax in comfort").
-- Read the description in whatever language it is written; express every output in English fact IDs / English summaries.`
+- present_ids: IDs of source facts the description clearly states. A faithful paraphrase counts; wording need not match.
+- missing_ids: IDs of source facts the description does NOT state.
+- unsupported_claims: concrete, checkable claims the description ASSERTS that no source fact supports, or that contradict a source fact — a fabricated amenity, or a wrong number, distance, or policy.
 
-// verify checks one description against the source facts.
+Strict rules for unsupported_claims:
+- Include ONLY things the text positively asserts that are absent from, or conflict with, the source.
+- NEVER list a fact the text merely left out: an omission belongs in missing_ids, not here.
+- NEVER write commentary, hedges, or notes (e.g. "this is minor", "no unsupported claims found"). If there are none, return an empty array.
+- Ignore generic marketing language ("a wonderful stay", "relax in comfort"); it asserts no checkable fact.
+- Each entry is a short English summary of the offending claim.
+
+Example: if the source says "dogs allowed in ground-floor rooms only" and the text says "dogs welcome throughout", that is a contradiction and belongs in unsupported_claims. If the text simply does not mention dogs, that is an omission (a missing_id), not an unsupported claim.`
+
+// verify checks one description against the source facts via structured output,
+// so the result is always schema-shaped JSON with no surrounding prose.
 func verify(ctx context.Context, c Client, facts []Fact, text string) (VerifyResult, error) {
 	user := fmt.Sprintf("Source facts:\n%s\nDescription:\n%s", factLines(facts), text)
-	raw, err := c.Complete(ctx, verifySystem, user, 0.0, 1024)
-	if err != nil {
-		return VerifyResult{}, err
-	}
 	var vr VerifyResult
-	if err := json.Unmarshal([]byte(extractJSON(raw)), &vr); err != nil {
-		return VerifyResult{}, fmt.Errorf("parsing verify JSON: %w (raw: %q)", err, raw)
+	if err := c.CompleteSchema(ctx, verifySystem, user, 0.0, 1024, "verify", &vr); err != nil {
+		return VerifyResult{}, fmt.Errorf("verify: %w", err)
 	}
 	return vr, nil
 }
@@ -48,32 +49,16 @@ type NativenessResult struct {
 }
 
 const nativeSystemTmpl = `You are a native-speaker language quality rater for %s.
-Rate how natural the given hotel description reads, on a scale of 1 to 5:
+Rate how natural the given hotel description reads on a scale of 1 to 5, judging fluency and idiom only, not factual content:
 5 = reads as if a native %s copywriter wrote it; 1 = obviously a stiff or literal machine translation.
-Judge fluency and idiom only, not factual content.
-Respond with ONLY a JSON object (no markdown fences): {"score": <1-5 integer>, "reason": "<one short sentence>"}`
+Give the integer score and a one-sentence reason.`
 
 // nativeness rates how idiomatic a description reads in its language.
 func nativeness(ctx context.Context, c Client, text, language string) (NativenessResult, error) {
 	system := fmt.Sprintf(nativeSystemTmpl, language, language)
-	raw, err := c.Complete(ctx, system, text, 0.0, 512)
-	if err != nil {
-		return NativenessResult{}, err
-	}
 	var nr NativenessResult
-	if err := json.Unmarshal([]byte(extractJSON(raw)), &nr); err != nil {
-		return NativenessResult{}, fmt.Errorf("parsing nativeness JSON: %w (raw: %q)", err, raw)
+	if err := c.CompleteSchema(ctx, system, text, 0.0, 512, "nativeness", &nr); err != nil {
+		return NativenessResult{}, fmt.Errorf("nativeness: %w", err)
 	}
 	return nr, nil
-}
-
-// extractJSON returns the substring from the first '{' to the last '}', so a
-// stray markdown fence or preamble around the JSON doesn't break parsing.
-func extractJSON(s string) string {
-	start := strings.Index(s, "{")
-	end := strings.LastIndex(s, "}")
-	if start == -1 || end == -1 || end < start {
-		return s
-	}
-	return s[start : end+1]
 }
